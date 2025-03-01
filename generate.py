@@ -14,7 +14,6 @@ from PIL import Image
 
 import wan
 from wan.configs import WAN_CONFIGS, SIZE_CONFIGS, MAX_AREA_CONFIGS, SUPPORTED_SIZES
-from wan.utils.prompt_extend import DashScopePromptExpander, QwenPromptExpander
 from wan.utils.utils import cache_video, cache_image, str2bool
 
 EXAMPLE_PROMPT = {
@@ -102,6 +101,12 @@ def _parse_args():
         help="Whether to offload the model to CPU after each model forward, reducing GPU memory usage."
     )
     parser.add_argument(
+        "--model_dtype",
+        type=str,
+        default="float16",
+        choices=["float16", "bfloat16", "float32"],
+        help="Data type to load the model in.")
+    parser.add_argument(
         "--ulysses_size",
         type=int,
         default=1,
@@ -136,28 +141,6 @@ def _parse_args():
         type=str,
         default=None,
         help="The prompt to generate the image or video from.")
-    parser.add_argument(
-        "--use_prompt_extend",
-        action="store_true",
-        default=False,
-        help="Whether to use prompt extend.")
-    parser.add_argument(
-        "--prompt_extend_method",
-        type=str,
-        default="local_qwen",
-        choices=["dashscope", "local_qwen"],
-        help="The prompt extend method to use.")
-    parser.add_argument(
-        "--prompt_extend_model",
-        type=str,
-        default=None,
-        help="The prompt extend model to use.")
-    parser.add_argument(
-        "--prompt_extend_target_lang",
-        type=str,
-        default="ch",
-        choices=["ch", "en"],
-        help="The target language of prompt extend.")
     parser.add_argument(
         "--base_seed",
         type=int,
@@ -245,19 +228,6 @@ def generate(args):
             ulysses_degree=args.ulysses_size,
         )
 
-    if args.use_prompt_extend:
-        if args.prompt_extend_method == "dashscope":
-            prompt_expander = DashScopePromptExpander(
-                model_name=args.prompt_extend_model, is_vl="i2v" in args.task)
-        elif args.prompt_extend_method == "local_qwen":
-            prompt_expander = QwenPromptExpander(
-                model_name=args.prompt_extend_model,
-                is_vl="i2v" in args.task,
-                device=rank)
-        else:
-            raise NotImplementedError(
-                f"Unsupport prompt_extend_method: {args.prompt_extend_method}")
-
     cfg = WAN_CONFIGS[args.task]
     if args.ulysses_size > 1:
         assert cfg.num_heads % args.ulysses_size == 0, f"`num_heads` must be divisible by `ulysses_size`."
@@ -274,27 +244,6 @@ def generate(args):
         if args.prompt is None:
             args.prompt = EXAMPLE_PROMPT[args.task]["prompt"]
         logging.info(f"Input prompt: {args.prompt}")
-        if args.use_prompt_extend:
-            logging.info("Extending prompt ...")
-            if rank == 0:
-                prompt_output = prompt_expander(
-                    args.prompt,
-                    tar_lang=args.prompt_extend_target_lang,
-                    seed=args.base_seed)
-                if prompt_output.status == False:
-                    logging.info(
-                        f"Extending prompt failed: {prompt_output.message}")
-                    logging.info("Falling back to original prompt.")
-                    input_prompt = args.prompt
-                else:
-                    input_prompt = prompt_output.prompt
-                input_prompt = [input_prompt]
-            else:
-                input_prompt = [None]
-            if dist.is_initialized():
-                dist.broadcast_object_list(input_prompt, src=0)
-            args.prompt = input_prompt[0]
-            logging.info(f"Extended prompt: {args.prompt}")
 
         logging.info("Creating WanT2V pipeline.")
         wan_t2v = wan.WanT2V(
@@ -330,28 +279,6 @@ def generate(args):
         logging.info(f"Input image: {args.image}")
 
         img = Image.open(args.image).convert("RGB")
-        if args.use_prompt_extend:
-            logging.info("Extending prompt ...")
-            if rank == 0:
-                prompt_output = prompt_expander(
-                    args.prompt,
-                    tar_lang=args.prompt_extend_target_lang,
-                    image=img,
-                    seed=args.base_seed)
-                if prompt_output.status == False:
-                    logging.info(
-                        f"Extending prompt failed: {prompt_output.message}")
-                    logging.info("Falling back to original prompt.")
-                    input_prompt = args.prompt
-                else:
-                    input_prompt = prompt_output.prompt
-                input_prompt = [input_prompt]
-            else:
-                input_prompt = [None]
-            if dist.is_initialized():
-                dist.broadcast_object_list(input_prompt, src=0)
-            args.prompt = input_prompt[0]
-            logging.info(f"Extended prompt: {args.prompt}")
 
         logging.info("Creating WanI2V pipeline.")
         wan_i2v = wan.WanI2V(
