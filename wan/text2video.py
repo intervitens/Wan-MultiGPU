@@ -29,6 +29,7 @@ class WanT2V:
         self,
         config,
         checkpoint_dir,
+        model_dtype=torch.float16,
         device_id=0,
         rank=0,
         t5_fsdp=False,
@@ -63,7 +64,7 @@ class WanT2V:
         self.t5_cpu = t5_cpu
 
         self.num_train_timesteps = config.num_train_timesteps
-        self.param_dtype = config.param_dtype
+        self.param_dtype = model_dtype
 
         shard_fn = partial(shard_model, device_id=device_id)
         self.text_encoder = T5EncoderModel(
@@ -81,7 +82,7 @@ class WanT2V:
             device=self.device)
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
-        self.model = WanModel.from_pretrained(checkpoint_dir)
+        self.model = WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
         self.model.eval().requires_grad_(False)
 
         if use_usp:
@@ -101,7 +102,7 @@ class WanT2V:
         if dist.is_initialized():
             dist.barrier()
         if dit_fsdp:
-            self.model = shard_fn(self.model)
+            self.model = shard_fn(self.model, param_dtype=self.param_dtype)
         else:
             self.model.to(self.device)
 

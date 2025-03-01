@@ -103,8 +103,8 @@ def _parse_args():
     parser.add_argument(
         "--model_dtype",
         type=str,
-        default="float16",
-        choices=["float16", "bfloat16", "float32"],
+        default="fp16",
+        choices=["fp16", "bf16", "fp32"],
         help="Data type to load the model in.")
     parser.add_argument(
         "--ulysses_size",
@@ -196,6 +196,12 @@ def generate(args):
     device = local_rank
     _init_logging(rank)
 
+    model_dtype = {
+            "fp16": torch.float16,
+            "bf16": torch.bfloat16,
+            "fp32": torch.float32
+            }[args.model_dtype]
+
     if args.offload_model is None:
         args.offload_model = False if world_size > 1 else True
         logging.info(
@@ -249,6 +255,7 @@ def generate(args):
         wan_t2v = wan.WanT2V(
             config=cfg,
             checkpoint_dir=args.ckpt_dir,
+            model_dtype=model_dtype,
             device_id=device,
             rank=rank,
             t5_fsdp=args.t5_fsdp,
@@ -284,6 +291,7 @@ def generate(args):
         wan_i2v = wan.WanI2V(
             config=cfg,
             checkpoint_dir=args.ckpt_dir,
+            model_dtype=model_dtype,
             device_id=device,
             rank=rank,
             t5_fsdp=args.t5_fsdp,

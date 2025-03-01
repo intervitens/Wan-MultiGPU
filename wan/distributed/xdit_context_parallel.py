@@ -155,9 +155,6 @@ def usp_attn_forward(self,
     b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
     half_dtypes = (torch.float16, torch.bfloat16)
 
-    def half(x):
-        return x if x.dtype in half_dtypes else x.to(dtype)
-
     # query, key, value function
     def qkv_fn(x):
         q = self.norm_q(self.q(x)).view(b, s, n, d)
@@ -176,11 +173,13 @@ def usp_attn_forward(self,
     #     k = torch.cat([u[:l] for u, l in zip(k, k_lens)]).unsqueeze(0)
     #     v = torch.cat([u[:l] for u, l in zip(v, k_lens)]).unsqueeze(0)
 
+    attn_dtype = v.dtype if v.dtype in half_dtypes else dtype
+
     x = xFuserLongContextAttention()(
         None,
-        query=half(q),
-        key=half(k),
-        value=half(v),
+        query=q.to(dtype=attn_dtype),
+        key=k.to(dtype=attn_dtype),
+        value=v.to(dtype=attn_dtype),
         window_size=self.window_size)
 
     # TODO: padding after attention.

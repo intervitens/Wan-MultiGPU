@@ -32,6 +32,7 @@ class WanI2V:
         self,
         config,
         checkpoint_dir,
+        model_dtype="float16",
         device_id=0,
         rank=0,
         t5_fsdp=False,
@@ -70,7 +71,7 @@ class WanI2V:
         self.t5_cpu = t5_cpu
 
         self.num_train_timesteps = config.num_train_timesteps
-        self.param_dtype = config.param_dtype
+        self.param_dtype = model_dtype
 
         shard_fn = partial(shard_model, device_id=device_id)
         self.text_encoder = T5EncoderModel(
@@ -96,7 +97,7 @@ class WanI2V:
             tokenizer_path=os.path.join(checkpoint_dir, config.clip_tokenizer))
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
-        self.model = WanModel.from_pretrained(checkpoint_dir)
+        self.model = WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
@@ -119,7 +120,7 @@ class WanI2V:
         if dist.is_initialized():
             dist.barrier()
         if dit_fsdp:
-            self.model = shard_fn(self.model)
+            self.model = shard_fn(self.model, param_dtype=self.param_dtype)
         else:
             if not init_on_cpu:
                 self.model.to(self.device)
