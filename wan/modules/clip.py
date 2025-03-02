@@ -9,7 +9,6 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 
 from .attention import flash_attention
-from .tokenizers import HuggingfaceTokenizer
 from .xlm_roberta import XLMRoberta
 
 __all__ = [
@@ -500,11 +499,10 @@ def clip_xlm_roberta_vit_h_14(
 
 class CLIPModel:
 
-    def __init__(self, dtype, device, checkpoint_path, tokenizer_path):
+    def __init__(self, dtype, device, checkpoint_path):
         self.dtype = dtype
         self.device = device
         self.checkpoint_path = checkpoint_path
-        self.tokenizer_path = tokenizer_path
 
         # init model
         self.model, self.transforms = clip_xlm_roberta_vit_h_14(
@@ -517,12 +515,6 @@ class CLIPModel:
         logging.info(f'loading {checkpoint_path}')
         self.model.load_state_dict(
             torch.load(checkpoint_path, map_location='cpu'))
-
-        # init tokenizer
-        self.tokenizer = HuggingfaceTokenizer(
-            name=tokenizer_path,
-            seq_len=self.model.max_text_len - 2,
-            clean='whitespace')
 
     def visual(self, videos):
         # preprocess

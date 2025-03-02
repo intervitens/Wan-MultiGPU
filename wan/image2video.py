@@ -9,6 +9,8 @@ import types
 from contextlib import contextmanager
 from functools import partial
 
+import pickle
+
 import numpy as np
 import torch
 import torch.cuda.amp as amp
@@ -92,9 +94,7 @@ class WanI2V:
         self.clip = CLIPModel(
             dtype=config.clip_dtype,
             device=self.device,
-            checkpoint_path=os.path.join(checkpoint_dir,
-                                         config.clip_checkpoint),
-            tokenizer_path=os.path.join(checkpoint_dir, config.clip_tokenizer))
+            checkpoint_path=os.path.join(checkpoint_dir, config.clip_checkpoint))
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
         self.model = WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
