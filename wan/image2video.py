@@ -39,6 +39,7 @@ class WanI2V:
         rank=0,
         t5_fsdp=False,
         dit_fsdp=False,
+        dit_fsdp_offload=False,
         use_usp=False,
         t5_cpu=False,
         init_on_cpu=True,
@@ -120,7 +121,7 @@ class WanI2V:
         if dist.is_initialized():
             dist.barrier()
         if dit_fsdp:
-            self.model = shard_fn(self.model, param_dtype=self.param_dtype)
+            self.model = shard_fn(self.model, param_dtype=self.param_dtype, cpu_offload=dit_fsdp_offload)
         else:
             if not init_on_cpu:
                 self.model.to(self.device)

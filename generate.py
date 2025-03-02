@@ -7,6 +7,7 @@ import sys
 import warnings
 
 warnings.filterwarnings('ignore')
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import torch, random
 import torch.distributed as dist
@@ -131,6 +132,11 @@ def _parse_args():
         action="store_true",
         default=False,
         help="Whether to use FSDP for DiT.")
+    parser.add_argument(
+        "--dit_fsdp_offload",
+        action="store_true",
+        default=False,
+        help="Whether to use FSDP CPU offload for DiT.")
     parser.add_argument(
         "--save_file",
         type=str,
@@ -260,6 +266,7 @@ def generate(args):
             rank=rank,
             t5_fsdp=args.t5_fsdp,
             dit_fsdp=args.dit_fsdp,
+            dit_fsdp_offload=args.dit_fsdp_offload,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
         )
@@ -296,6 +303,7 @@ def generate(args):
             rank=rank,
             t5_fsdp=args.t5_fsdp,
             dit_fsdp=args.dit_fsdp,
+            dit_fsdp_offload=args.dit_fsdp_offload,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
         )

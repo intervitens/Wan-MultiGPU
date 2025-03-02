@@ -3,7 +3,7 @@ from functools import partial
 
 import torch
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
+from torch.distributed.fsdp import MixedPrecision, ShardingStrategy, CPUOffload
 from torch.distributed.fsdp.wrap import lambda_auto_wrap_policy
 
 
@@ -16,6 +16,7 @@ def shard_model(
     process_group=None,
     sharding_strategy=ShardingStrategy.FULL_SHARD,
     sync_module_states=True,
+    cpu_offload=False
 ):
     model = FSDP(
         module=model,
@@ -28,5 +29,6 @@ def shard_model(
             reduce_dtype=reduce_dtype,
             buffer_dtype=buffer_dtype),
         device_id=device_id,
+        cpu_offload=CPUOffload(offload_params=True) if cpu_offload else None,
         sync_module_states=sync_module_states)
     return model
