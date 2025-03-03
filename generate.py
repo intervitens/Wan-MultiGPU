@@ -108,6 +108,17 @@ def _parse_args():
         choices=["fp16", "bf16", "fp32"],
         help="Data type to load the model in.")
     parser.add_argument(
+        "--attn_impl",
+        type=str,
+        default="sage_attn",
+        choices=["sage_attn", "flash_attn"],
+        help="Attention implementation to use with the model.")
+    parser.add_argument(
+        "--fp16_acc",
+        action="store_true",
+        default=False,
+        help="Whether to use fp16 accumulation. Requires Pytorch Nightly version.")
+    parser.add_argument(
         "--ulysses_size",
         type=int,
         default=1,
@@ -208,6 +219,9 @@ def generate(args):
             "fp32": torch.float32
             }[args.model_dtype]
 
+    if args.fp16_acc:
+        torch.backends.cuda.matmul.allow_fp16_accumulation = True
+
     if args.offload_model is None:
         args.offload_model = False if world_size > 1 else True
         logging.info(
@@ -269,6 +283,7 @@ def generate(args):
             dit_fsdp_offload=args.dit_fsdp_offload,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
+            attn_impl=args.attn_impl,
         )
 
         logging.info(
@@ -306,6 +321,7 @@ def generate(args):
             dit_fsdp_offload=args.dit_fsdp_offload,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
+            attn_impl=args.attn_impl,
         )
 
         logging.info("Generating video ...")

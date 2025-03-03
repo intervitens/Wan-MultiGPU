@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 from .distributed.fsdp import shard_model
 from .modules.clip import CLIPModel
-from .modules.model import WanModel
+from .modules import model as WanModelModule
 from .modules.t5 import T5EncoderModel
 from .modules.vae import WanVAE
 from .utils.fm_solvers import (FlowDPMSolverMultistepScheduler,
@@ -43,6 +43,7 @@ class WanI2V:
         use_usp=False,
         t5_cpu=False,
         init_on_cpu=True,
+        attn_impl="flash_attn"
     ):
         r"""
         Initializes the image-to-video generation model components.
@@ -98,7 +99,16 @@ class WanI2V:
             checkpoint_path=os.path.join(checkpoint_dir, config.clip_checkpoint))
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
-        self.model = WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
+        if attn_impl == "flash_attn":
+            self.model = WanModelModule.WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
+        elif attn_impl == "sage_attn":
+            from .monkeypatch.sage_attn import monkeypatch_wan_sage_attn
+            WanModelModule_p = monkeypatch_wan_sage_attn(WanModelModule)
+            self.model = WanModelModule_p.WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
+        else:
+            raise ValueError("Invalit attention implementation: " + str(attn_impl))
+
+
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
@@ -107,12 +117,18 @@ class WanI2V:
         if use_usp:
             from xfuser.core.distributed import \
                 get_sequence_parallel_world_size
+            if attn_impl == "flash_attn":
+                from .distributed.xdit_context_parallel import usp_attn_forward
+                for block in self.model.blocks:
+                    block.self_attn.forward = types.MethodType(
+                        usp_attn_forward, block.self_attn)
+            elif attn_impl == "sage_attn":
+                from .distributed.xdit_context_parallel import usp_sage_attn_forward
+                for block in self.model.blocks:
+                    block.self_attn.forward = types.MethodType(
+                        usp_sage_attn_forward, block.self_attn)
 
-            from .distributed.xdit_context_parallel import (usp_attn_forward,
-                                                            usp_dit_forward)
-            for block in self.model.blocks:
-                block.self_attn.forward = types.MethodType(
-                    usp_attn_forward, block.self_attn)
+            from .distributed.xdit_context_parallel import usp_dit_forward
             self.model.forward = types.MethodType(usp_dit_forward, self.model)
             self.sp_size = get_sequence_parallel_world_size()
         else:
