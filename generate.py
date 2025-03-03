@@ -14,8 +14,8 @@ import torch.distributed as dist
 from PIL import Image
 
 import wan
-from wan.configs import WAN_CONFIGS, SIZE_CONFIGS, MAX_AREA_CONFIGS, SUPPORTED_SIZES
-from wan.utils.utils import cache_video, cache_image, str2bool
+from wan.configs import WAN_CONFIGS
+from wan.utils.utils import cache_video, cache_image, str2bool, size_str_parse
 
 EXAMPLE_PROMPT = {
     "t2v-1.3B": {
@@ -46,9 +46,11 @@ def _validate_args(args):
     if args.sample_steps is None:
         args.sample_steps = 40 if "i2v" in args.task else 50
 
+    size = size_str_parse(args.size)
+
     if args.sample_shift is None:
         args.sample_shift = 5.0
-        if "i2v" in args.task and args.size in ["832*480", "480*832"]:
+        if "i2v" in args.task and min(size) <= 480:
             args.sample_shift = 3.0
 
     # The default number of frames are 1 for text-to-image tasks and 81 for other tasks.
@@ -61,10 +63,6 @@ def _validate_args(args):
 
     args.base_seed = args.base_seed if args.base_seed >= 0 else random.randint(
         0, sys.maxsize)
-    # Size check
-    assert args.size in SUPPORTED_SIZES[
-        args.
-        task], f"Unsupport size {args.size} for task {args.task}, supported sizes are: {', '.join(SUPPORTED_SIZES[args.task])}"
 
 
 def _parse_args():
@@ -81,8 +79,7 @@ def _parse_args():
         "--size",
         type=str,
         default="1280*720",
-        choices=list(SIZE_CONFIGS.keys()),
-        help="The area (width*height) of the generated video. For the I2V task, the aspect ratio of the output video will follow that of the input image."
+        help="The area (WIDTH*HEIGHT or WIDTHxHEIGHT) of the generated video. For the I2V task, the aspect ratio of the output video will follow that of the input image."
     )
     parser.add_argument(
         "--frame_num",
@@ -219,6 +216,8 @@ def generate(args):
             "fp32": torch.float32
             }[args.model_dtype]
 
+    size = size_str_parse(args.size)
+
     if args.fp16_acc:
         torch.backends.cuda.matmul.allow_fp16_accumulation = True
 
@@ -290,7 +289,7 @@ def generate(args):
             f"Generating {'image' if 't2i' in args.task else 'video'} ...")
         video = wan_t2v.generate(
             args.prompt,
-            size=SIZE_CONFIGS[args.size],
+            size=size,
             frame_num=args.frame_num,
             shift=args.sample_shift,
             sample_solver=args.sample_solver,
@@ -328,7 +327,7 @@ def generate(args):
         video = wan_i2v.generate(
             args.prompt,
             img,
-            max_area=MAX_AREA_CONFIGS[args.size],
+            max_area=size[0] * size[1],
             frame_num=args.frame_num,
             shift=args.sample_shift,
             sample_solver=args.sample_solver,
@@ -343,7 +342,7 @@ def generate(args):
             formatted_prompt = args.prompt.replace(" ", "_").replace("/",
                                                                      "_")[:50]
             suffix = '.png' if "t2i" in args.task else '.mp4'
-            args.save_file = f"{args.task}_{args.size}_{args.ulysses_size}_{args.ring_size}_{formatted_prompt}_{formatted_time}" + suffix
+            args.save_file = f"{args.task}_{size[0]}x{size[1]}_{args.ulysses_size}_{args.ring_size}_{formatted_prompt}_{formatted_time}" + suffix
 
         if "t2i" in args.task:
             logging.info(f"Saving generated image to {args.save_file}")

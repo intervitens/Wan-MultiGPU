@@ -3,6 +3,7 @@ import argparse
 import binascii
 import os
 import os.path as osp
+import re
 
 import imageio
 import torch
@@ -116,3 +117,15 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected (True/False)')
+
+def size_str_parse(size_str):
+    size_split = re.split('\*|x', size_str)
+    if len(size_split) != 2:
+        raise ValueError("Invalid size string: ", size_str)
+    try:
+        w = int(size_split[0])
+        h = int(size_split[1])
+    except ValueError:
+        raise ValueError("Invalid size string: ", size_str)
+    return w, h
+
