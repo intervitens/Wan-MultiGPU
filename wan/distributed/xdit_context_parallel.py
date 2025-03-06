@@ -8,6 +8,7 @@ from xfuser.core.long_ctx_attention import xFuserLongContextAttention
 
 from ..modules.model import sinusoidal_embedding_1d
 from ..monkeypatch.ring_sage_attn import xdit_ring_sage_attn_func
+from ..monkeypatch.ring_sage_attn_fp16 import xdit_ring_sage_attn_func as xdit_ring_sage_attn_func_fp16
 
 
 def pad_freqs(original_tensor, target_len):
@@ -223,6 +224,54 @@ def usp_sage_attn_forward(self,
     
     xdit_attn = xFuserLongContextAttention()
     xdit_attn.ring_attn_fn = xdit_ring_sage_attn_func
+
+    x = xdit_attn(
+        None,
+        query=q.to(dtype=attn_dtype),
+        key=k.to(dtype=attn_dtype),
+        value=v.to(dtype=attn_dtype),
+        window_size=self.window_size)
+
+    # TODO: padding after attention.
+    # x = torch.cat([x, x.new_zeros(b, s - x.size(1), n, d)], dim=1)
+
+    # output
+    x = x.flatten(2)
+    x = self.o(x)
+    return x
+
+
+def usp_sage_attn_forward_fp16(self,
+                     x,
+                     seq_lens,
+                     grid_sizes,
+                     freqs,
+                     dtype=torch.bfloat16):
+    b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
+    half_dtypes = (torch.float16, torch.bfloat16)
+
+    # query, key, value function
+    def qkv_fn(x):
+        q = self.norm_q(self.q(x)).view(b, s, n, d)
+        k = self.norm_k(self.k(x)).view(b, s, n, d)
+        v = self.v(x).view(b, s, n, d)
+        return q, k, v
+
+    q, k, v = qkv_fn(x)
+    q = rope_apply(q, grid_sizes, freqs)
+    k = rope_apply(k, grid_sizes, freqs)
+
+    # TODO: We should use unpaded q,k,v for attention.
+    # k_lens = seq_lens // get_sequence_parallel_world_size()
+    # if k_lens is not None:
+    #     q = torch.cat([u[:l] for u, l in zip(q, k_lens)]).unsqueeze(0)
+    #     k = torch.cat([u[:l] for u, l in zip(k, k_lens)]).unsqueeze(0)
+    #     v = torch.cat([u[:l] for u, l in zip(v, k_lens)]).unsqueeze(0)
+
+    attn_dtype = v.dtype if v.dtype in half_dtypes else dtype
+    
+    xdit_attn = xFuserLongContextAttention()
+    xdit_attn.ring_attn_fn = xdit_ring_sage_attn_func_fp16
 
     x = xdit_attn(
         None,

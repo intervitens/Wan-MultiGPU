@@ -108,7 +108,7 @@ def _parse_args():
         "--attn_impl",
         type=str,
         default="sage_attn",
-        choices=["sage_attn", "flash_attn"],
+        choices=["sage_attn", "sage_attn_fp16", "flash_attn"],
         help="Attention implementation to use with the model.")
     parser.add_argument(
         "--fp16_acc",

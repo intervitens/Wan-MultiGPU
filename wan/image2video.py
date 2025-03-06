@@ -105,6 +105,10 @@ class WanI2V:
             from .monkeypatch.sage_attn import monkeypatch_wan_sage_attn
             WanModelModule_p = monkeypatch_wan_sage_attn(WanModelModule)
             self.model = WanModelModule_p.WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
+        elif attn_impl == "sage_attn_fp16":
+            from .monkeypatch.sage_attn_fp16 import monkeypatch_wan_sage_attn
+            WanModelModule_p = monkeypatch_wan_sage_attn(WanModelModule)
+            self.model = WanModelModule_p.WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
         else:
             raise ValueError("Invalit attention implementation: " + str(attn_impl))
 
@@ -124,6 +128,11 @@ class WanI2V:
                         usp_attn_forward, block.self_attn)
             elif attn_impl == "sage_attn":
                 from .distributed.xdit_context_parallel import usp_sage_attn_forward
+                for block in self.model.blocks:
+                    block.self_attn.forward = types.MethodType(
+                        usp_sage_attn_forward, block.self_attn)
+            elif attn_impl == "sage_attn_fp16":
+                from .distributed.xdit_context_parallel import usp_sage_attn_forward_fp16
                 for block in self.model.blocks:
                     block.self_attn.forward = types.MethodType(
                         usp_sage_attn_forward, block.self_attn)
