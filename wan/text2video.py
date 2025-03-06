@@ -118,7 +118,7 @@ class WanT2V:
                 from .distributed.xdit_context_parallel import usp_sage_attn_forward_fp16
                 for block in self.model.blocks:
                     block.self_attn.forward = types.MethodType(
-                        usp_sage_attn_forward, block.self_attn)
+                        usp_sage_attn_forward_fp16, block.self_attn)
 
             from .distributed.xdit_context_parallel import usp_dit_forward
             self.model.forward = types.MethodType(usp_dit_forward, self.model)
