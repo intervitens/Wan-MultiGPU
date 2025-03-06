@@ -78,13 +78,14 @@ class WanI2V:
         self.param_dtype = model_dtype
 
         shard_fn = partial(shard_model, device_id=device_id)
+        shard_fn_t5 = partial(shard_model, device_id=device_id, cpu_offload=True)
         self.text_encoder = T5EncoderModel(
             text_len=config.text_len,
             dtype=config.t5_dtype,
             device=torch.device('cpu'),
             checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
             tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
-            shard_fn=shard_fn if t5_fsdp else None,
+            shard_fn=shard_fn_t5 if t5_fsdp else None,
         )
 
         self.vae_stride = config.vae_stride
@@ -245,7 +246,7 @@ class WanI2V:
 
         # preprocess
         if not self.t5_cpu:
-            self.text_encoder.model.to(self.device)
+            #self.text_encoder.model.to(self.device)
             context = self.text_encoder([input_prompt], self.device)
             context_null = self.text_encoder([n_prompt], self.device)
             if offload_model:
