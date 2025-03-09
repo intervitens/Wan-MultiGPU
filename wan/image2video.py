@@ -6,6 +6,7 @@ import os
 import random
 import sys
 import types
+import psutil
 from contextlib import contextmanager
 from functools import partial
 
@@ -242,10 +243,18 @@ class WanI2V:
             if offload_model:
                 self.text_encoder.model.cpu()
         else:
-            context = self.text_encoder([input_prompt], torch.device('cpu'))
-            context_null = self.text_encoder([n_prompt], torch.device('cpu'))
-            context = [t.to(self.device) for t in context]
-            context_null = [t.to(self.device) for t in context_null]
+            if self.rank == 0:
+                torch.set_num_threads(psutil.cpu_count(logical=False))
+                context = self.text_encoder([input_prompt], torch.device('cpu'))
+                context_null = self.text_encoder([n_prompt], torch.device('cpu'))
+                torch.set_num_threads(1)
+                context = [t.to(self.device) for t in context]
+                context_null = [t.to(self.device) for t in context_null]
+            else:
+                context = [None]
+                context_null = [None]
+            dist.broadcast_object_list(context, src=0)
+            dist.broadcast_object_list(context_null, src=0)
 
         self.clip.model.to(self.device)
         clip_context = self.clip.visual([img[:, None, :, :]])
