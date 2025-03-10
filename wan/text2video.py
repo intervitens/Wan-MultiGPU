@@ -289,12 +289,15 @@ class WanT2V:
                 self.model.cpu()
                 torch.cuda.empty_cache()
 
-            videos = self.vae.decode(x0,
-                                    tiled=self.tiled_vae,
-                                    tile_size=self.tiled_vae_config[0],
-                                    tile_stride=self.tiled_vae_config[1],
-                                    rank=self.rank,
-                                    world_size=self.sp_size)
+            if self.tiled_vae:
+                videos = self.vae.decode(x0,
+                                        tiled=self.tiled_vae,
+                                        tile_size=self.tiled_vae_config[0],
+                                        tile_stride=self.tiled_vae_config[1],
+                                        rank=self.rank,
+                                        world_size=self.sp_size)
+            elif self.rank == 0:
+                videos = self.vae.decode(x0)
 
         del noise, latents
         del sample_scheduler
