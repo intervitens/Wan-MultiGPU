@@ -129,3 +129,15 @@ def size_str_parse(size_str):
         raise ValueError("Invalid size string: ", size_str)
     return w, h
 
+def tiled_vae_str_parse(s):
+    parts = s.split(',')
+    if len(parts) != 4:
+        raise ValueError(f"Invalid VAE tiling config: {s}")
+    integer_pattern = re.compile(r'^-?\d+$')
+    for part in parts:
+        if not integer_pattern.match(part):
+            raise ValueError(f"Invalid VAE tiling config: Invalid integer: {part}")
+    integers = list(map(int, parts))
+    tuple_pairs = tuple((integers[i], integers[i+1]) for i in range(0, len(integers), 2))
+    return tuple_pairs
+

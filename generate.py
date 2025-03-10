@@ -15,7 +15,11 @@ from PIL import Image
 
 import wan
 from wan.configs import WAN_CONFIGS
-from wan.utils.utils import cache_video, cache_image, str2bool, size_str_parse
+from wan.utils.utils import (cache_video,
+                            cache_image,
+                            str2bool,
+                            size_str_parse,
+                            tiled_vae_str_parse)
 
 EXAMPLE_PROMPT = {
     "t2v-1.3B": {
@@ -146,6 +150,16 @@ def _parse_args():
         default=False,
         help="Whether to use FSDP CPU offload for DiT.")
     parser.add_argument(
+        "--tiled_vae",
+        action="store_true",
+        default=False,
+        help="Whether to use tiled VAE.")
+    parser.add_argument(
+        "--tiled_vae_config",
+        type=str,
+        default="512,512,448,448",
+        help="VAE tiling configuration in the format of \"TILE_SIZE_H,TILE_SIZE_W,STRIDE_H,STRIDE_W\"")
+    parser.add_argument(
         "--save_file",
         type=str,
         default=None,
@@ -217,6 +231,7 @@ def generate(args):
             }[args.model_dtype]
 
     size = size_str_parse(args.size)
+    tiled_vae_config = tiled_vae_str_parse(args.tiled_vae_config)
 
     if args.fp16_acc:
         torch.backends.cuda.matmul.allow_fp16_accumulation = True
@@ -283,6 +298,8 @@ def generate(args):
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
             attn_impl=args.attn_impl,
+            tiled_vae=args.tiled_vae,
+            tiled_vae_config=tiled_vae_config,
         )
 
         logging.info(
@@ -321,6 +338,8 @@ def generate(args):
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
             attn_impl=args.attn_impl,
+            tiled_vae=args.tiled_vae,
+            tiled_vae_config=tiled_vae_config,
         )
 
         logging.info("Generating video ...")

@@ -44,6 +44,8 @@ class WanI2V:
         use_usp=False,
         t5_cpu=False,
         init_on_cpu=True,
+        tiled_vae=False,
+        tiled_vae_config=((512, 512), (448, 448)),
         attn_impl="flash_attn"
     ):
         r"""
@@ -74,6 +76,8 @@ class WanI2V:
         self.rank = rank
         self.use_usp = use_usp
         self.t5_cpu = t5_cpu
+        self.tiled_vae = tiled_vae
+        self.tiled_vae_config = tiled_vae_config
 
         self.num_train_timesteps = config.num_train_timesteps
         self.param_dtype = model_dtype
@@ -267,9 +271,10 @@ class WanI2V:
                     img[None].cpu(), size=(h, w), mode='bicubic').transpose(
                         0, 1),
                 torch.zeros(3, F-1, h, w)
-            ],
-                         dim=1).to(self.device)
-        ])[0]
+            ],dim=1).to(self.device)
+                            ], tiled=self.tiled_vae,
+                            tile_size=self.tiled_vae_config[0],
+                            tile_stride=self.tiled_vae_config[1])[0]
         y = torch.concat([msk, y])
 
         @contextmanager
@@ -322,7 +327,6 @@ class WanI2V:
             if offload_model:
                 torch.cuda.empty_cache()
 
-            self.model.to(self.device)
             for _, t in enumerate(tqdm(timesteps)):
                 latent_model_input = [latent.to(self.device)]
                 timestep = [t]
@@ -361,7 +365,10 @@ class WanI2V:
                 torch.cuda.empty_cache()
 
             if self.rank == 0:
-                videos = self.vae.decode(x0)
+                videos = self.vae.decode(x0,
+                                        tiled=self.tiled_vae,
+                                        tile_size=self.tiled_vae_config[0],
+                                        tile_stride=self.tiled_vae_config[1])
 
         del noise, latent
         del sample_scheduler

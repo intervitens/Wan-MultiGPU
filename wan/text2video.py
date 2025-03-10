@@ -38,6 +38,8 @@ class WanT2V:
         dit_fsdp_offload=False,
         use_usp=False,
         t5_cpu=False,
+        tiled_vae=False,
+        tiled_vae_config=((512, 512), (448, 448)),
         attn_impl="flash_attn",
     ):
         r"""
@@ -65,6 +67,8 @@ class WanT2V:
         self.config = config
         self.rank = rank
         self.t5_cpu = t5_cpu
+        self.tiled_vae = tiled_vae
+        self.tiled_vae_config = tiled_vae_config
 
         self.num_train_timesteps = config.num_train_timesteps
         self.param_dtype = model_dtype
@@ -282,7 +286,10 @@ class WanT2V:
                 self.model.cpu()
                 torch.cuda.empty_cache()
             if self.rank == 0:
-                videos = self.vae.decode(x0)
+                videos = self.vae.decode(x0,
+                                        tiled=self.tiled_vae,
+                                        tile_size=self.tiled_vae_config[0],
+                                        tile_stride=self.tiled_vae_config[1])
 
         del noise, latents
         del sample_scheduler
