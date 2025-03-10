@@ -274,7 +274,9 @@ class WanI2V:
             ],dim=1).to(self.device)
                             ], tiled=self.tiled_vae,
                             tile_size=self.tiled_vae_config[0],
-                            tile_stride=self.tiled_vae_config[1])[0]
+                            tile_stride=self.tiled_vae_config[1],
+                            rank=self.rank,
+                            world_size=self.sp_size)[0]
         y = torch.concat([msk, y])
 
         @contextmanager
@@ -364,11 +366,12 @@ class WanI2V:
                 self.model.cpu()
                 torch.cuda.empty_cache()
 
-            if self.rank == 0:
-                videos = self.vae.decode(x0,
-                                        tiled=self.tiled_vae,
-                                        tile_size=self.tiled_vae_config[0],
-                                        tile_stride=self.tiled_vae_config[1])
+            videos = self.vae.decode(x0,
+                                    tiled=self.tiled_vae,
+                                    tile_size=self.tiled_vae_config[0],
+                                    tile_stride=self.tiled_vae_config[1],
+                                    rank=self.rank,
+                                    world_size=self.sp_size)
 
         del noise, latent
         del sample_scheduler

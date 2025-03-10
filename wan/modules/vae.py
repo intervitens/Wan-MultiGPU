@@ -1,5 +1,6 @@
 # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
 import logging
+import itertools
 
 import torch
 import torch.amp as amp
@@ -810,11 +811,153 @@ class WanVAE:
         values = values.float()
         return values.to(self.device)
 
-    def encode(self, videos, tiled=True, tile_size=(512, 512), tile_stride=(448, 448)):
+    def tiled_encode_distributed(self, video, tile_size, tile_stride, rank, world_size):
+        _, _, T, H, W = video.shape
+        size_h, size_w = tile_size
+        stride_h, stride_w = tile_stride
+
+        # Split tasks
+        tasks = []
+        for h in range(0, H, stride_h):
+            if (h-stride_h >= 0 and h-stride_h+size_h >= H): continue
+            for w in range(0, W, stride_w):
+                if (w-stride_w >= 0 and w-stride_w+size_w >= W): continue
+                h_, w_ = h + size_h, w + size_w
+                tasks.append((h, h_, w, w_))
+
+        data_device = "cpu"
+        out_T = (T + 3) // 4
+        weight = torch.zeros((1, 1, out_T, H // self.upsampling_factor,
+                            W // self.upsampling_factor),
+                            dtype=video.dtype,
+                            device=data_device)
+        values = torch.zeros((1, 16, out_T, H // self.upsampling_factor,
+                            W // self.upsampling_factor),
+                            dtype=video.dtype,
+                            device=data_device)
+
+        chunks = len(tasks)
+        chunk_size, remainder = divmod(chunks, world_size)
+        start = rank * chunk_size + min(rank, remainder)
+        end = start + chunk_size + (1 if rank < remainder else 0)
+        tasks_chunk = tasks[start:end]
+        output_chunk = []
+        for h, h_, w, w_ in tasks_chunk:
+            hidden_states_batch = video[:, :, :, h:h_, w:w_].to(self.device)
+            with amp.autocast("cuda", dtype=self.dtype):
+                output_chunk.append(self.model.encode(hidden_states_batch, self.scale).cpu())
+        gathered_outputs = [None] * world_size
+        dist.all_gather_object(gathered_outputs, output_chunk)
+        outputs = []
+        for chunk in gathered_outputs:
+            outputs.extend(chunk)
+
+        for (h, h_, w, w_), hidden_states_batch in zip(tasks, outputs):
+            mask = self.build_mask(
+                hidden_states_batch,
+                is_bound=(h==0, h_>=H, w==0, w_>=W),
+                border_width=((size_h - stride_h) // self.upsampling_factor, (size_w - stride_w) // self.upsampling_factor)
+            ).to(dtype=video.dtype, device=data_device)
+
+            target_h = h // self.upsampling_factor
+            target_w = w // self.upsampling_factor
+            values[
+                :,
+                :,
+                :,
+                target_h:target_h + hidden_states_batch.shape[3],
+                target_w:target_w + hidden_states_batch.shape[4],
+            ] += hidden_states_batch * mask
+            weight[
+                :,
+                :,
+                :,
+                target_h: target_h + hidden_states_batch.shape[3],
+                target_w: target_w + hidden_states_batch.shape[4],
+            ] += mask
+        values = values / weight
+        values = values.float()
+        return values.to(self.device)
+
+    def tiled_decode_distributed(self, hidden_states, tile_size, tile_stride, rank, world_size):
+        _, _, T, H, W = hidden_states.shape
+        size_h, size_w = (tile_size[0] // self.upsampling_factor, tile_size[1] // self.upsampling_factor)
+        stride_h, stride_w = (tile_stride[0] // self.upsampling_factor, tile_stride[1] // self.upsampling_factor)
+
+        # Split tasks
+        tasks = []
+        for h in range(0, H, stride_h):
+            if (h-stride_h >= 0 and h-stride_h+size_h >= H): continue
+            for w in range(0, W, stride_w):
+                if (w-stride_w >= 0 and w-stride_w+size_w >= W): continue
+                h_, w_ = h + size_h, w + size_w
+                tasks.append((h, h_, w, w_))
+
+        data_device = "cpu"
+        out_T = T * 4 - 3
+        weight = torch.zeros((1, 1, out_T, H * self.upsampling_factor,
+                            W * self.upsampling_factor),
+                            dtype=hidden_states.dtype,
+                            device=data_device)
+        values = torch.zeros((1, 3, out_T, H * self.upsampling_factor,
+                            W * self.upsampling_factor),
+                            dtype=hidden_states.dtype,
+                            device=data_device)
+
+        chunks = len(tasks)
+        chunk_size, remainder = divmod(chunks, world_size)
+        start = rank * chunk_size + min(rank, remainder)
+        end = start + chunk_size + (1 if rank < remainder else 0)
+        tasks_chunk = tasks[start:end]
+        output_chunk = []
+        for h, h_, w, w_ in tasks_chunk:
+            hidden_states_batch = hidden_states[:, :, :, h:h_, w:w_].to(self.device)
+            with amp.autocast("cuda", dtype=self.dtype):
+                output_chunk.append(self.model.decode(hidden_states_batch, self.scale).cpu())
+
+        gathered_outputs = [None] * world_size
+        dist.all_gather_object(gathered_outputs, output_chunk)
+        outputs = []
+        for chunk in gathered_outputs:
+            outputs.extend(chunk)
+
+        for (h, h_, w, w_), hidden_states_batch in zip(tasks, outputs):
+            mask = self.build_mask(
+                hidden_states_batch,
+                is_bound=(h==0, h_>=H, w==0, w_>=W),
+                border_width=((size_h - stride_h) * self.upsampling_factor, (size_w - stride_w) * self.upsampling_factor)
+            ).to(dtype=hidden_states.dtype, device=data_device)
+
+            target_h = h * self.upsampling_factor
+            target_w = w * self.upsampling_factor
+            values[
+                :,
+                :,
+                :,
+                target_h:target_h + hidden_states_batch.shape[3],
+                target_w:target_w + hidden_states_batch.shape[4],
+            ] += hidden_states_batch * mask
+            weight[
+                :,
+                :,
+                :,
+                target_h: target_h + hidden_states_batch.shape[3],
+                target_w: target_w + hidden_states_batch.shape[4],
+            ] += mask
+        values = values / weight
+        values = values.float().clamp_(-1, 1)
+        return values.to(self.device)
+
+    def encode(self, videos, tiled=False, tile_size=(512, 512),
+                tile_stride=(448, 448), rank=0, world_size=1):
         hidden_states = []
         for video in videos:
             video = video.unsqueeze(0)
-            if tiled:
+            if tiled and world_size > 1:
+                tile_size = (tile_size[0], tile_size[1])
+                tile_stride = (tile_stride[0], tile_stride[1])
+                hidden_state = self.tiled_encode_distributed(video, tile_size, tile_stride, rank, world_size)
+            elif tiled:
                 tile_size = (tile_size[0], tile_size[1])
                 tile_stride = (tile_stride[0], tile_stride[1])
                 hidden_state = self.tiled_encode(video, tile_size, tile_stride)
@@ -825,12 +968,15 @@ class WanVAE:
         hidden_states = torch.stack(hidden_states)
         return hidden_states
 
-    def decode(self, hidden_states, tiled=True, tile_size=(128, 128), tile_stride=(96, 96)):
+    def decode(self, hidden_states, tiled=False, tile_size=(512, 512), 
+                tile_stride=(448, 448), rank=0, world_size=1):
         hidden_states = [hidden_state.to("cpu") for hidden_state in hidden_states]
         videos = []
         for hidden_state in hidden_states:
             hidden_state = hidden_state.unsqueeze(0)
-            if tiled:
+            if tiled and world_size > 1:
+                video = self.tiled_decode_distributed(hidden_state, tile_size, tile_stride, rank, world_size)
+            elif tiled:
                 video = self.tiled_decode(hidden_state, tile_size, tile_stride)
             else:
                 video = self.single_decode(hidden_state)
