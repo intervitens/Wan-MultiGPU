@@ -259,23 +259,27 @@ def usp_dit_teacache_forward(
         if enable_teacache:
             if not should_calc:
                 x = x + self.previous_residual_cond if cond_flag else x + self.previous_residual_uncond
+                x = self.head(x, e)
             else:
-                ori_x = x.clone()
-
                 x = torch.chunk(
                     x, get_sequence_parallel_world_size(),
                     dim=1)[get_sequence_parallel_rank()]
 
+                ori_x = x.clone()
+
                 for block in self.blocks:
                     x = block(x, **kwargs)
 
+                previous_residual = x - ori_x
+                x = self.head(x, e)
+
                 x = get_sp_group().all_gather(x, dim=1)
+                previous_residual = get_sp_group().all_gather(previous_residual, dim=1)
 
                 if cond_flag:
-                    self.previous_residual_cond = x - ori_x
+                    self.previous_residual_cond = previous_residual
                 else:
-                    self.previous_residual_uncond = x - ori_x
-            x = self.head(x, e)
+                    self.previous_residual_uncond = previous_residual
         else:
             x = torch.chunk(
                 x, get_sequence_parallel_world_size(),
