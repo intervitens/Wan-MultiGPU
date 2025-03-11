@@ -155,6 +155,11 @@ def _parse_args():
         default=False,
         help="Whether to use tiled VAE.")
     parser.add_argument(
+        "--tiled_vae_encode",
+        action="store_true",
+        default=False,
+        help="Whether to use tiled VAE encoding.")
+    parser.add_argument(
         "--tiled_vae_config",
         type=str,
         default="512,512,448,448",
@@ -352,6 +357,7 @@ def generate(args):
             t5_cpu=args.t5_cpu,
             attn_impl=args.attn_impl,
             tiled_vae=args.tiled_vae,
+            tiled_vae_encode=args.tiled_vae_encode,
             tiled_vae_config=tiled_vae_config,
         )
 

@@ -46,6 +46,7 @@ class WanI2V:
         t5_cpu=False,
         init_on_cpu=True,
         tiled_vae=False,
+        tiled_vae_encode=False,
         tiled_vae_config=((512, 512), (448, 448)),
         attn_impl="flash_attn"
     ):
@@ -78,6 +79,7 @@ class WanI2V:
         self.use_usp = use_usp
         self.t5_cpu = t5_cpu
         self.tiled_vae = tiled_vae
+        self.tiled_vae_encode = tiled_vae_encode
         self.tiled_vae_config = tiled_vae_config
 
         self.num_train_timesteps = config.num_train_timesteps
@@ -273,7 +275,7 @@ class WanI2V:
                         0, 1),
                 torch.zeros(3, F-1, h, w)
             ],dim=1).to(self.device)
-                            ], tiled=self.tiled_vae,
+                            ], tiled=self.tiled_vae_encode,
                             tile_size=self.tiled_vae_config[0],
                             tile_stride=self.tiled_vae_config[1],
                             rank=self.rank,
