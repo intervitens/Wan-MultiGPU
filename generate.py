@@ -160,6 +160,11 @@ def _parse_args():
         default="512,512,448,448",
         help="VAE tiling configuration in the format of \"TILE_SIZE_H,TILE_SIZE_W,STRIDE_H,STRIDE_W\"")
     parser.add_argument(
+        "--tc_thresh",
+        type=float,
+        default=0.0,
+        help="Teacache rel_l1_thresh, enables teacache if above 0.")
+    parser.add_argument(
         "--save_file",
         type=str,
         default=None,
@@ -302,6 +307,14 @@ def generate(args):
             tiled_vae_config=tiled_vae_config,
         )
 
+        wan_t2v.model.teacache_args['enable_teacache'] = args.tc_thresh > 0.0
+        wan_t2v.model.teacache_args['num_steps'] = args.sample_steps
+        wan_t2v.model.teacache_args['rel_l1_thresh'] = args.tc_thresh
+        if '1.3B' in args.ckpt_dir:
+            wan_t2v.model.teacache_args['coefficients'] = [2.39676752e+03, -1.31110545e+03,  2.01331979e+02, -8.29855975e+00, 1.37887774e-01]
+        if '14B' in args.ckpt_dir:
+            wan_t2v.model.teacache_args['coefficients'] = [-5784.54975374,  5449.50911966, -1811.16591783,   256.27178429, -13.02252404]
+
         logging.info(
             f"Generating {'image' if 't2i' in args.task else 'video'} ...")
         video = wan_t2v.generate(
@@ -341,6 +354,14 @@ def generate(args):
             tiled_vae=args.tiled_vae,
             tiled_vae_config=tiled_vae_config,
         )
+
+        wan_i2v.model.teacache_args['enable_teacache'] = args.tc_thresh > 0.0
+        wan_i2v.model.teacache_args['num_steps'] = args.sample_steps
+        wan_i2v.model.teacache_args['rel_l1_thresh'] = args.tc_thresh
+        if '480P' in args.ckpt_dir:
+            wan_i2v.model.teacache_args['coefficients'] = [-3.02331670e+02,  2.23948934e+02, -5.25463970e+01,  5.87348440e+00, -2.01973289e-01]
+        if '720P' in args.ckpt_dir:
+            wan_i2v.model.teacache_args['coefficients'] = [-114.36346466,   65.26524496,  -18.82220707,    4.91518089,   -0.23412683]
 
         logging.info("Generating video ...")
         video = wan_i2v.generate(

@@ -441,6 +441,17 @@ class WanModel(ModelMixin, ConfigMixin):
         self.cross_attn_norm = cross_attn_norm
         self.eps = eps
 
+        self.teacache_args = {'enable_teacache': False,
+                              'num_steps': None,
+                              'rel_l1_thresh': None,
+                              'coefficients': None}
+        self.cnt = 0
+        self.accumulated_rel_l1_distance = 0
+        self.previous_modulated_input = None
+        self.previous_residual_cond = None
+        self.previous_residual_uncond = None
+        self.should_calc = True
+
         # embeddings
         self.patch_embedding = nn.Conv3d(
             in_dim, dim, kernel_size=patch_size, stride=patch_size)

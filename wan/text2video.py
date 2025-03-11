@@ -16,7 +16,7 @@ import torch.distributed as dist
 from tqdm import tqdm
 
 from .distributed.fsdp import shard_model
-from .modules import model as WanModelModule
+from .modules.model import WanModel
 from .modules.t5 import T5EncoderModel
 from .modules.vae import WanVAE
 from .utils.fm_solvers import (FlowDPMSolverMultistepScheduler,
@@ -89,12 +89,12 @@ class WanT2V:
             device=self.device)
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
+        self.model = WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
         if attn_impl == "flash_attn":
-            self.model = WanModelModule.WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
+            pass            
         elif attn_impl == "sage_attn":
-            from .monkeypatch.sage_attn import monkeypatch_wan_sage_attn
-            WanModelModule_p = monkeypatch_wan_sage_attn(WanModelModule)
-            self.model = WanModelModule_p.WanModel.from_pretrained(checkpoint_dir, torch_dtype=self.param_dtype)
+            from .monkeypatch.sage_attn import monkeypatch_wan_model_sage_attn
+            monkeypatch_wan_model_sage_attn(self.model, "t2v")
         else:
             raise ValueError("Invalit attention implementation: " + str(attn_impl))
 
@@ -116,8 +116,8 @@ class WanT2V:
                     block.self_attn.forward = types.MethodType(
                         usp_sage_attn_forward, block.self_attn)
 
-            from .distributed.xdit_context_parallel import usp_dit_forward
-            self.model.forward = types.MethodType(usp_dit_forward, self.model)
+            from .distributed.xdit_context_parallel import usp_dit_teacache_forward #usp_dit_forward
+            self.model.forward = types.MethodType(usp_dit_teacache_forward, self.model)
             self.sp_size = get_sequence_parallel_world_size()
         else:
             self.sp_size = 1
@@ -255,8 +255,8 @@ class WanT2V:
             # sample videos
             latents = noise
 
-            arg_c = {'context': context, 'seq_len': seq_len}
-            arg_null = {'context': context_null, 'seq_len': seq_len}
+            arg_c = {'context': context, 'seq_len': seq_len, 'cond_flag': True}
+            arg_null = {'context': context_null, 'seq_len': seq_len, 'cond_flag': False}
 
             if offload_model:
                 torch.cuda.empty_cache()

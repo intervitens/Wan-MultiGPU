@@ -146,6 +146,151 @@ def usp_dit_forward(
     x = self.unpatchify(x, grid_sizes)
     return [u.float() for u in x]
 
+import numpy as np
+def usp_dit_teacache_forward(
+        self,
+        x,
+        t,
+        context,
+        seq_len,
+        clip_fea=None,
+        y=None,
+        cond_flag=False,
+    ):
+        r"""
+        Forward pass through the diffusion model
+
+        Args:
+            x (List[Tensor]):
+                List of input video tensors, each with shape [C_in, F, H, W]
+            t (Tensor):
+                Diffusion timesteps tensor of shape [B]
+            context (List[Tensor]):
+                List of text embeddings each with shape [L, C]
+            seq_len (`int`):
+                Maximum sequence length for positional encoding
+            clip_fea (Tensor, *optional*):
+                CLIP image features for image-to-video mode
+            y (List[Tensor], *optional*):
+                Conditional video inputs for image-to-video mode, same shape as x
+
+        Returns:
+            List[Tensor]:
+                List of denoised video tensors with original input shapes [C_out, F, H / 8, W / 8]
+        """
+        if self.model_type == 'i2v':
+            assert clip_fea is not None and y is not None
+        # params
+        device = self.patch_embedding.weight.device
+        if self.freqs.device != device:
+            self.freqs = self.freqs.to(device)
+
+        if y is not None:
+            x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
+
+        # embeddings
+        x = [self.patch_embedding(u.unsqueeze(0)) for u in x]
+        grid_sizes = torch.stack(
+            [torch.tensor(u.shape[2:], dtype=torch.long) for u in x])
+        x = [u.flatten(2).transpose(1, 2) for u in x]
+        seq_lens = torch.tensor([u.size(1) for u in x], dtype=torch.long)
+        assert seq_lens.max() <= seq_len
+        x = torch.cat([
+            torch.cat([u, u.new_zeros(1, seq_len - u.size(1), u.size(2))],
+                      dim=1) for u in x
+        ])
+        # time embeddings
+        with amp.autocast("cuda", dtype=torch.float32):
+            e = self.time_embedding(
+                sinusoidal_embedding_1d(self.freq_dim, t).float())
+            e0 = self.time_projection(e).unflatten(1, (6, self.dim))
+            assert e.dtype == torch.float32 and e0.dtype == torch.float32
+
+        # context
+        context_lens = None
+        context = self.text_embedding(
+            torch.stack([
+                torch.cat(
+                    [u, u.new_zeros(self.text_len - u.size(0), u.size(1))])
+                for u in context
+            ]))
+
+        if clip_fea is not None:
+            context_clip = self.img_emb(clip_fea)  # bs x 257 x dim
+            context = torch.concat([context_clip, context], dim=1)
+
+        # arguments
+        kwargs = dict(
+            e=e0,
+            seq_lens=seq_lens,
+            grid_sizes=grid_sizes,
+            freqs=self.freqs,
+            context=context,
+            context_lens=context_lens)
+
+        enable_teacache = self.teacache_args['enable_teacache']
+        num_steps = self.teacache_args['num_steps']
+        rel_l1_thresh = self.teacache_args['rel_l1_thresh']
+        coefficients = self.teacache_args['coefficients']
+
+        if enable_teacache:
+            if cond_flag:
+                modulated_inp = e
+                if self.cnt == 0 or self.cnt == num_steps-1:
+                    should_calc = True
+                    self.accumulated_rel_l1_distance = 0
+                else:
+                    rescale_func = np.poly1d(coefficients)
+                    if cond_flag:
+                        self.accumulated_rel_l1_distance += rescale_func(((modulated_inp-self.previous_modulated_input).abs().mean() / self.previous_modulated_input.abs().mean()).cpu().item())
+                    if self.accumulated_rel_l1_distance < rel_l1_thresh:
+                        should_calc = False
+                    else:
+                        should_calc = True
+                        self.accumulated_rel_l1_distance = 0
+                self.previous_modulated_input = modulated_inp
+                self.cnt = 0 if self.cnt == num_steps-1 else self.cnt + 1
+                self.should_calc = should_calc
+            else:
+                should_calc = self.should_calc
+            # if not cond_flag:
+            #     self.cnt = 0 if self.cnt == self.num_steps-1 else self.cnt + 1
+
+        if enable_teacache:
+            if not should_calc:
+                x = x + self.previous_residual_cond if cond_flag else x + self.previous_residual_uncond
+            else:
+                ori_x = x.clone()
+
+                x = torch.chunk(
+                    x, get_sequence_parallel_world_size(),
+                    dim=1)[get_sequence_parallel_rank()]
+
+                for block in self.blocks:
+                    x = block(x, **kwargs)
+
+                x = get_sp_group().all_gather(x, dim=1)
+
+                if cond_flag:
+                    self.previous_residual_cond = x - ori_x
+                else:
+                    self.previous_residual_uncond = x - ori_x
+            x = self.head(x, e)
+        else:
+            x = torch.chunk(
+                x, get_sequence_parallel_world_size(),
+                dim=1)[get_sequence_parallel_rank()]
+
+            for block in self.blocks:
+                x = block(x, **kwargs)
+
+            x = self.head(x, e)
+            x = get_sp_group().all_gather(x, dim=1)
+
+        # unpatchify
+        x = self.unpatchify(x, grid_sizes)
+        return [u.float() for u in x]
+
 
 def usp_attn_forward(self,
                      x,
