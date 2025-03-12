@@ -175,6 +175,11 @@ def _parse_args():
         default=10,
         help="Enable teacache starting from this step.")
     parser.add_argument(
+        "--cfg_steps",
+        type=int,
+        default=9999,
+        help="Use CFG only for the the first N steps.")
+    parser.add_argument(
         "--save_file",
         type=str,
         default=None,
@@ -335,6 +340,7 @@ def generate(args):
             shift=args.sample_shift,
             sample_solver=args.sample_solver,
             sampling_steps=args.sample_steps,
+            cfg_steps=args.cfg_steps,
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
             offload_model=args.offload_model)
@@ -385,6 +391,7 @@ def generate(args):
             shift=args.sample_shift,
             sample_solver=args.sample_solver,
             sampling_steps=args.sample_steps,
+            cfg_steps=args.cfg_steps,
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
             offload_model=args.offload_model)
@@ -414,6 +421,7 @@ def generate(args):
                 nrow=1,
                 normalize=True,
                 value_range=(-1, 1))
+    dist.destroy_process_group()
     logging.info("Finished.")
 
 

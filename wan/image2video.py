@@ -160,6 +160,7 @@ class WanI2V:
                  shift=5.0,
                  sample_solver='unipc',
                  sampling_steps=40,
+                 cfg_steps=9999,
                  guide_scale=5.0,
                  n_prompt="",
                  seed=-1,
@@ -334,7 +335,7 @@ class WanI2V:
             if offload_model:
                 torch.cuda.empty_cache()
 
-            for _, t in enumerate(tqdm(timesteps)):
+            for s, t in enumerate(tqdm(timesteps)):
                 latent_model_input = [latent.to(self.device)]
                 timestep = [t]
 
@@ -343,15 +344,24 @@ class WanI2V:
                 noise_pred_cond = self.model(
                     latent_model_input, t=timestep, **arg_c)[0].to(
                         torch.device('cpu') if offload_model else self.device)
+
                 if offload_model:
                     torch.cuda.empty_cache()
-                noise_pred_uncond = self.model(
-                    latent_model_input, t=timestep, **arg_null)[0].to(
-                        torch.device('cpu') if offload_model else self.device)
-                if offload_model:
-                    torch.cuda.empty_cache()
-                noise_pred = noise_pred_uncond + guide_scale * (
-                    noise_pred_cond - noise_pred_uncond)
+
+                do_uncond_step = s < cfg_steps
+
+                if do_uncond_step:
+                    noise_pred_uncond = self.model(
+                        latent_model_input, t=timestep, **arg_null)[0].to(
+                            torch.device('cpu') if offload_model else self.device)
+
+                    if offload_model:
+                        torch.cuda.empty_cache()
+
+                    noise_pred = noise_pred_uncond + guide_scale * (
+                        noise_pred_cond - noise_pred_uncond)
+                else:
+                    noise_pred = noise_pred_cond
 
                 latent = latent.to(
                     torch.device('cpu') if offload_model else self.device)

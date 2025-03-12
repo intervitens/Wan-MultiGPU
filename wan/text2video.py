@@ -138,6 +138,7 @@ class WanT2V:
                  shift=5.0,
                  sample_solver='unipc',
                  sampling_steps=50,
+                 cfg_steps=9999,
                  guide_scale=5.0,
                  n_prompt="",
                  seed=-1,
@@ -261,7 +262,7 @@ class WanT2V:
             if offload_model:
                 torch.cuda.empty_cache()
 
-            for _, t in enumerate(tqdm(timesteps)):
+            for s, t in enumerate(tqdm(timesteps)):
                 latent_model_input = latents
                 timestep = [t]
 
@@ -270,11 +271,17 @@ class WanT2V:
                 #self.model.to(self.device)
                 noise_pred_cond = self.model(
                     latent_model_input, t=timestep, **arg_c)[0]
-                noise_pred_uncond = self.model(
-                    latent_model_input, t=timestep, **arg_null)[0]
 
-                noise_pred = noise_pred_uncond + guide_scale * (
-                    noise_pred_cond - noise_pred_uncond)
+                do_uncond_step = s < cfg_steps
+
+                if do_uncond_step:
+                    noise_pred_uncond = self.model(
+                        latent_model_input, t=timestep, **arg_null)[0]
+
+                    noise_pred = noise_pred_uncond + guide_scale * (
+                        noise_pred_cond - noise_pred_uncond)
+                else:
+                    noise_pred = noise_pred_cond
 
                 temp_x0 = sample_scheduler.step(
                     noise_pred.unsqueeze(0),
