@@ -444,7 +444,8 @@ class WanModel(ModelMixin, ConfigMixin):
         self.teacache_args = {'enable_teacache': False,
                               'num_steps': None,
                               'rel_l1_thresh': None,
-                              'coefficients': None}
+                              'coefficients': None,
+                              'start_step': 0}
         self.cnt = 0
         self.accumulated_rel_l1_distance = 0
         self.previous_modulated_input = None

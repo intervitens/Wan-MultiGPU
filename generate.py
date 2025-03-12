@@ -170,6 +170,11 @@ def _parse_args():
         default=0.0,
         help="Teacache rel_l1_thresh, enables teacache if above 0.")
     parser.add_argument(
+        "--tc_start_step",
+        type=int,
+        default=10,
+        help="Enable teacache starting from this step.")
+    parser.add_argument(
         "--save_file",
         type=str,
         default=None,
@@ -315,6 +320,7 @@ def generate(args):
         wan_t2v.model.teacache_args['enable_teacache'] = args.tc_thresh > 0.0
         wan_t2v.model.teacache_args['num_steps'] = args.sample_steps
         wan_t2v.model.teacache_args['rel_l1_thresh'] = args.tc_thresh
+        wan_t2v.model.teacache_args['start_step'] = args.tc_start_step
         if '1.3B' in args.ckpt_dir:
             wan_t2v.model.teacache_args['coefficients'] = [2.39676752e+03, -1.31110545e+03,  2.01331979e+02, -8.29855975e+00, 1.37887774e-01]
         if '14B' in args.ckpt_dir:
@@ -364,6 +370,7 @@ def generate(args):
         wan_i2v.model.teacache_args['enable_teacache'] = args.tc_thresh > 0.0
         wan_i2v.model.teacache_args['num_steps'] = args.sample_steps
         wan_i2v.model.teacache_args['rel_l1_thresh'] = args.tc_thresh
+        wan_i2v.model.teacache_args['start_step'] = args.tc_start_step
         if '480P' in args.ckpt_dir:
             wan_i2v.model.teacache_args['coefficients'] = [-3.02331670e+02,  2.23948934e+02, -5.25463970e+01,  5.87348440e+00, -2.01973289e-01]
         if '720P' in args.ckpt_dir:

@@ -232,11 +232,12 @@ def usp_dit_teacache_forward(
         num_steps = self.teacache_args['num_steps']
         rel_l1_thresh = self.teacache_args['rel_l1_thresh']
         coefficients = self.teacache_args['coefficients']
+        start_step = self.teacache_args['start_step']
 
         if enable_teacache:
             if cond_flag:
                 modulated_inp = e
-                if self.cnt == 0 or self.cnt == num_steps-1:
+                if self.cnt <= start_step or self.cnt == num_steps-1:
                     should_calc = True
                     self.accumulated_rel_l1_distance = 0
                 else:
