@@ -156,6 +156,7 @@ def usp_dit_teacache_forward(
         clip_fea=None,
         y=None,
         cond_flag=False,
+        slg_layers = None,
     ):
         r"""
         Forward pass through the diffusion model
@@ -268,7 +269,9 @@ def usp_dit_teacache_forward(
 
                 ori_x = x.clone()
 
-                for block in self.blocks:
+                for block_idx, block in enumerate(self.blocks):
+                    if slg_layers is not None and block_idx in slg_layers and not cond_flag:
+                        continue
                     x = block(x, **kwargs)
 
                 previous_residual = x - ori_x
@@ -286,7 +289,9 @@ def usp_dit_teacache_forward(
                 x, get_sequence_parallel_world_size(),
                 dim=1)[get_sequence_parallel_rank()]
 
-            for block in self.blocks:
+            for block_idx, block in enumerate(self.blocks):
+                if slg_layers is not None and block_idx in slg_layers and not cond_flag:
+                    continue
                 x = block(x, **kwargs)
 
             x = self.head(x, e)

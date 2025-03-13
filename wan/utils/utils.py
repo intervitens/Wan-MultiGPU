@@ -141,3 +141,12 @@ def tiled_vae_str_parse(s):
     tuple_pairs = tuple((integers[i], integers[i+1]) for i in range(0, len(integers), 2))
     return tuple_pairs
 
+def int_arr_str_parse(s):
+    parts = s.split(',')
+    integer_pattern = re.compile(r'^-?\d+$')
+    for part in parts:
+        if not integer_pattern.match(part):
+            raise ValueError(f"Invalid array of integers: Invalid integer: {part}")
+    integers = list(map(int, parts))
+    return integers
+

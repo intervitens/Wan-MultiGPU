@@ -19,7 +19,8 @@ from wan.utils.utils import (cache_video,
                             cache_image,
                             str2bool,
                             size_str_parse,
-                            tiled_vae_str_parse)
+                            tiled_vae_str_parse,
+                            int_arr_str_parse)
 
 EXAMPLE_PROMPT = {
     "t2v-1.3B": {
@@ -180,6 +181,11 @@ def _parse_args():
         default=9999,
         help="Use CFG only for the the first N steps.")
     parser.add_argument(
+        "--slg_layers",
+        type=str,
+        default=None,
+        help="Layers to skip during unconditional guidance step")
+    parser.add_argument(
         "--save_file",
         type=str,
         default=None,
@@ -252,6 +258,7 @@ def generate(args):
 
     size = size_str_parse(args.size)
     tiled_vae_config = tiled_vae_str_parse(args.tiled_vae_config)
+    slg_layers = int_arr_str_parse(args.slg_layers)
 
     if args.fp16_acc:
         torch.backends.cuda.matmul.allow_fp16_accumulation = True
@@ -343,7 +350,8 @@ def generate(args):
             cfg_steps=args.cfg_steps,
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
-            offload_model=args.offload_model)
+            offload_model=args.offload_model,
+            slg_layers=slg_layers)
 
     else:
         if args.prompt is None:
@@ -394,7 +402,8 @@ def generate(args):
             cfg_steps=args.cfg_steps,
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
-            offload_model=args.offload_model)
+            offload_model=args.offload_model,
+            slg_layers=slg_layers)
 
     if rank == 0:
         if args.save_file is None:
