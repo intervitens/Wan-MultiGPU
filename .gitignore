@@ -1,8 +1,8 @@
 .*
 *.py[cod]
-# *.jpg
-*.jpeg
-# *.png
+/*.jpg
+/*.jpeg
+/*.png
 *.gif
 *.bmp
 *.mp4
