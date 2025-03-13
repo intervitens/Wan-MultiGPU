@@ -258,7 +258,7 @@ def generate(args):
 
     size = size_str_parse(args.size)
     tiled_vae_config = tiled_vae_str_parse(args.tiled_vae_config)
-    slg_layers = int_arr_str_parse(args.slg_layers)
+    slg_layers = int_arr_str_parse(args.slg_layers) if args.slg_layers is not None else None
 
     if args.fp16_acc:
         torch.backends.cuda.matmul.allow_fp16_accumulation = True
