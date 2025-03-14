@@ -85,6 +85,23 @@ class WanRMSNorm(nn.Module):
     def _norm(self, x):
         return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
 
+try:
+    from apex.normalization import FusedRMSNorm
+    APEX_AVAILABLE = True
+    class WanRMSNormFused(FusedRMSNorm):
+
+        def __init__(self, dim, eps=1e-5):
+            super().__init__(dim, elementwise_affine=True, eps=eps)
+
+        def forward(self, x):
+            r"""
+            Args:
+                x(Tensor): Shape [B, L, C]
+            """
+            return super().forward(x.float()).type_as(x)
+except ImportError:
+    APEX_AVAILABLE = False
+
 
 class WanLayerNorm(nn.LayerNorm):
 
@@ -121,8 +138,12 @@ class WanSelfAttention(nn.Module):
         self.k = nn.Linear(dim, dim)
         self.v = nn.Linear(dim, dim)
         self.o = nn.Linear(dim, dim)
-        self.norm_q = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
-        self.norm_k = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
+        if APEX_AVAILABLE:
+            self.norm_q = WanRMSNormFused(dim, eps=eps) if qk_norm else nn.Identity()
+            self.norm_k = WanRMSNormFused(dim, eps=eps) if qk_norm else nn.Identity()
+        else:
+            self.norm_q = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
+            self.norm_k = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
 
     def forward(self, x, seq_lens, grid_sizes, freqs):
         r"""
