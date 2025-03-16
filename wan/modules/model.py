@@ -102,6 +102,27 @@ try:
 except ImportError:
     APEX_AVAILABLE = False
 
+from ..kernels.rms_norm import rms_norm, rms_norm_precompile
+import tilelang
+
+class WanRMSNormT(nn.Module):
+    #rms_norm_precompile(18564, 5120, 1e-6)
+    #rms_norm_precompile(257, 5120, 1e-6)
+    #rms_norm_precompile(512, 5120, 1e-6)
+
+    def __init__(self, dim, eps=1e-5):
+        super().__init__()
+        self.dim = dim
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim)) 
+
+    def forward(self, x):
+        r"""
+        Args:
+            x(Tensor): Shape [B, L, C]
+        """
+        return rms_norm(x.squeeze(0), self.weight, self.eps).unsqueeze(0)
+
 
 class WanLayerNorm(nn.LayerNorm):
 
@@ -138,12 +159,15 @@ class WanSelfAttention(nn.Module):
         self.k = nn.Linear(dim, dim)
         self.v = nn.Linear(dim, dim)
         self.o = nn.Linear(dim, dim)
-        if APEX_AVAILABLE:
-            self.norm_q = WanRMSNormFused(dim, eps=eps) if qk_norm else nn.Identity()
-            self.norm_k = WanRMSNormFused(dim, eps=eps) if qk_norm else nn.Identity()
-        else:
-            self.norm_q = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
-            self.norm_k = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
+
+        self.norm_q = WanRMSNormT(dim, eps=eps) if qk_norm else nn.Identity()
+        self.norm_k = WanRMSNormT(dim, eps=eps) if qk_norm else nn.Identity()
+        #if False and APEX_AVAILABLE:
+        #self.norm_q = WanRMSNormFused(dim, eps=eps) if qk_norm else nn.Identity()
+        #self.norm_k = WanRMSNormFused(dim, eps=eps) if qk_norm else nn.Identity()
+        #else:
+        #self.norm_q = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
+        #self.norm_k = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
 
     def forward(self, x, seq_lens, grid_sizes, freqs):
         r"""
@@ -215,7 +239,7 @@ class WanI2VCrossAttention(WanSelfAttention):
         self.k_img = nn.Linear(dim, dim)
         self.v_img = nn.Linear(dim, dim)
         # self.alpha = nn.Parameter(torch.zeros((1, )))
-        self.norm_k_img = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
+        self.norm_k_img = WanRMSNormT(dim, eps=eps) if qk_norm else nn.Identity()
 
     def forward(self, x, context, context_lens):
         r"""
