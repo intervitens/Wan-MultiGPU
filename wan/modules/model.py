@@ -107,8 +107,9 @@ import tilelang
 
 class WanRMSNormT(nn.Module):
     #rms_norm_precompile(18564, 5120, 1e-6)
-    #rms_norm_precompile(257, 5120, 1e-6)
-    #rms_norm_precompile(512, 5120, 1e-6)
+    rms_norm_precompile(18900, 5120, 1e-6)
+    rms_norm_precompile(257, 5120, 1e-6)
+    rms_norm_precompile(512, 5120, 1e-6)
 
     def __init__(self, dim, eps=1e-5):
         super().__init__()
