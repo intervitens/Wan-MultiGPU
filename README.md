@@ -19,7 +19,7 @@ pip install triton
 Install SageAttention
 ```
 git clone https://github.com/thu-ml/SageAttention.git
-cd sageattention 
+cd SageAttention 
 python setup.py install  # or pip install -e .
 ```
 
